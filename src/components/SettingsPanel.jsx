@@ -24,7 +24,14 @@ export default function SettingsPanel() {
     if (savedAutonomy) setAutonomy(savedAutonomy);
     if (savedPrompt) setPrompt(savedPrompt);
     if (savedGit) setGithubToken(savedGit);
-    if (savedGem) setGeminiKey(savedGem);
+    
+    if (savedGem) {
+      setGeminiKey(savedGem);
+    } else {
+      const activeKey = 'AIzaSyAKQGdw6BrA2q1lljf0iMCqPV0CQCabQ1A';
+      setGeminiKey(activeKey);
+      localStorage.setItem('antigravity_gemini', activeKey);
+    }
   }, []);
 
   const handleSave = (e) => {

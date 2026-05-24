@@ -45,16 +45,104 @@ export default function App() {
     return () => clearTimeout(interval);
   }, [isSimulating, simStep, speed]);
 
-  const startSimulation = (promptText = '') => {
+  const startSimulation = async (promptText = '') => {
+    const time = new Date().toLocaleTimeString();
+    
+    // Attempt to pull Gemini Key from LocalStorage sandbox
+    const geminiKey = localStorage.getItem('antigravity_gemini');
+    
+    if (geminiKey && geminiKey.trim()) {
+      setIsSimulating(false); // Stop mock scheduler
+      setAgentStatus('Running');
+      
+      const startMsg = {
+        type: 'command',
+        text: `[AGENT EXECUTION TRIGGERED] Querying Gemini Core with prompt: "${promptText}"`,
+        timestamp: time
+      };
+      setLogs(prev => [...prev, startMsg]);
+      
+      try {
+        setAgentStatus('Analyzing');
+        const customPrompt = localStorage.getItem('antigravity_prompt') || 
+          'You are Antigravity, a powerful agentic AI coding assistant designed by Google Deepmind. Respond to the developer in a technical, helpful, and highly detailed code-focused tone. Present any commands as lines starting with "$" or "Executing command:".';
+        
+        // Make standard HTTP call to Gemini Generative AI endpoint
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    {
+                      text: `${customPrompt}\n\nUser request: "${promptText}"\n\nProvide step-by-step developer actions, showing any commands run (start commands with "$ ").`
+                    }
+                  ]
+                }
+              ]
+            })
+          }
+        );
+        
+        const data = await response.json();
+        
+        if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
+          const rawText = data.candidates[0].content.parts[0].text;
+          
+          // Split response into lines and stream them dynamically
+          const lines = rawText.split('\n');
+          setAgentStatus('Writing');
+          
+          let currentLineIdx = 0;
+          const streamInterval = setInterval(() => {
+            if (currentLineIdx < lines.length) {
+              const line = lines[currentLineIdx];
+              const lineTime = new Date().toLocaleTimeString();
+              
+              if (line.trim().startsWith('$') || line.trim().startsWith('Executing command:')) {
+                addLog('command', line, lineTime);
+              } else if (line.toLowerCase().includes('success') || line.toLowerCase().includes('complete') || line.toLowerCase().includes('done')) {
+                addLog('success', line, lineTime);
+              } else if (line.toLowerCase().includes('error') || line.toLowerCase().includes('fail')) {
+                addLog('error', line, lineTime);
+              } else if (line.trim()) {
+                addLog('info', line, lineTime);
+              }
+              
+              currentLineIdx++;
+            } else {
+              clearInterval(streamInterval);
+              setAgentStatus('Done');
+              addLog('success', '🤖 Antigravity task execution successfully complete.', new Date().toLocaleTimeString());
+            }
+          }, 150); // 150ms per line streaming delay for snappy responses!
+          
+        } else {
+          addLog('error', `Gemini API Response Error: ${JSON.stringify(data)}`, time);
+          setAgentStatus('IDLE');
+        }
+      } catch (err) {
+        addLog('error', `Network error calling Gemini API: ${err.message}`, time);
+        setAgentStatus('IDLE');
+      }
+      
+      return;
+    }
+    
+    // Fallback: If no key is set, run standard mock CI/CD pipeline simulation!
     setIsSimulating(true);
     setSimStep(0);
     setAgentStatus('Running');
     
-    // Add command starting log
     const startMsg = {
       type: 'command',
-      text: `[AGENT EXECUTION TRIGGERED] Processing Prompt: "${promptText || 'Deploy full CI/CD pipeline'}"`,
-      timestamp: new Date().toLocaleTimeString()
+      text: `[AGENT SIMULATION TRIGGERED] Processing Prompt: "${promptText || 'Deploy full CI/CD pipeline'}"`,
+      timestamp: time
     };
     setLogs(prev => [...prev, startMsg]);
   };
